@@ -1,6 +1,6 @@
 ## novfmt
 
-`novfmt` is a lightweight Go CLI for EPUB maintenance. Today it ships two commands:
+`novfmt` is a lightweight Go CLI for EPUB maintenance. Currently it has the following commands:
 
 - `merge`: build an omnibus EPUB from multiple single volumes while keeping assets and reading order intact.
 - `edit-meta`: tweak the metadata or navigation of an existing EPUB without cracking open an editor.
