@@ -47,6 +47,16 @@ func TestBuildPackageDefaults(t *testing.T) {
 	if pkg.UniqueIdentifier != "bookid" {
 		t.Fatalf("unique identifier mismatch: %s", pkg.UniqueIdentifier)
 	}
+	foundModified := false
+	for _, meta := range pkg.Metadata.Meta {
+		if meta.Property == "dcterms:modified" && meta.Value != "" {
+			foundModified = true
+			break
+		}
+	}
+	if !foundModified {
+		t.Fatalf("expected dcterms:modified meta")
+	}
 }
 
 func TestNormalizeEPUBPath(t *testing.T) {

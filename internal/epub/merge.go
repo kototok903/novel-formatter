@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 func MergeEPUBs(ctx context.Context, sources []string, opts MergeOptions) error {
@@ -230,6 +231,10 @@ func buildPackage(vols []*Volume, manifest Manifest, spine Spine, opts MergeOpti
 	meta.Meta = append(meta.Meta, MetaNode{
 		Property: "novfmt:source-count",
 		Value:    fmt.Sprintf("%d", len(vols)),
+	})
+	meta.Meta = append(meta.Meta, MetaNode{
+		Property: "dcterms:modified",
+		Value:    time.Now().UTC().Format(time.RFC3339),
 	})
 	if coverID != "" {
 		meta.Meta = append(meta.Meta, MetaNode{
