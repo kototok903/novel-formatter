@@ -156,7 +156,7 @@ func buildTestEPUB(t *testing.T, title, lang string) string {
 		t.Fatalf("write opf: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(oebps, "chapter.xhtml"), []byte("<html></html>"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(oebps, "chapter.xhtml"), []byte("<html><body><p>Chapter 1</p></body></html>"), 0o644); err != nil {
 		t.Fatalf("write chapter: %v", err)
 	}
 

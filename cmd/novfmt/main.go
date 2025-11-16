@@ -33,6 +33,8 @@ func main() {
 		err = runMerge(ctx, os.Args[2:])
 	case "edit-meta":
 		err = runEditMeta(ctx, os.Args[2:])
+	case "rewrite":
+		err = runRewrite(ctx, os.Args[2:])
 	case "help", "-h", "--help":
 		printUsage()
 		return
@@ -112,6 +114,7 @@ func printUsage() {
 Usage:
   novfmt merge [options] <volume1.epub> <volume2.epub> [...]
   novfmt edit-meta [options] <book.epub>
+  novfmt rewrite [options] <book.epub>
 
 Merge flags:
   -o, -out        Output EPUB path (default merged.epub)
@@ -129,6 +132,17 @@ Edit-meta flags:
   -nav <xhtml>                               Replace nav (XHTML) document (use -dump-nav to export)
   -out <file>                                Write edits to a new EPUB
   -no-touch-modified                         Skip touching dcterms:modified
+
+Rewrite flags:
+  -find <str>                                String or pattern to search for
+  -replace <str>                             Replacement text
+  -regex                                     Treat -find as regular expression
+  -case-sensitive                            Make matching case-sensitive (default case-insensitive)
+  -scope body|meta|all                       Rewrite only XHTML body, metadata, or both (default body)
+  -selector <sel>                            CSS-like selector (tag, .class, tag.class); repeatable
+  -rules <file>                              JSON rules file (list of {find, replace, ...})
+  -dry-run                                   Analyze and report matches without writing output
+  -out <file>                                Write rewritten book to a new EPUB
 `)
 }
 
@@ -237,6 +251,77 @@ func extractVolumeNumber(name string) (int, bool) {
 		return 0, false
 	}
 	return num, true
+}
+
+func runRewrite(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("rewrite", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	out := fs.String("out", "", "output EPUB path (defaults to input for in-place rewrite)")
+	find := fs.String("find", "", "string or pattern to search for")
+	replace := fs.String("replace", "", "replacement string")
+	regex := fs.Bool("regex", false, "treat find pattern as regular expression")
+	caseSensitive := fs.Bool("case-sensitive", false, "make matching case-sensitive (default false)")
+	scopeStr := fs.String("scope", "body", "rewrite scope: body, meta, all")
+
+	var selectors multiValue
+	fs.Var(&selectors, "selector", "CSS-like selector (tag, .class or tag.class); repeatable")
+
+	rulesPath := fs.String("rules", "", "JSON file with rewrite rules")
+	dryRun := fs.Bool("dry-run", false, "analyze and report matches without writing output")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if fs.NArg() != 1 {
+		return fmt.Errorf("rewrite requires exactly one EPUB path")
+	}
+	input := fs.Arg(0)
+
+	var rules []epub.RewriteRule
+	if *rulesPath != "" {
+		fileRules, err := epub.LoadRewriteRulesJSON(*rulesPath)
+		if err != nil {
+			return fmt.Errorf("read rules: %w", err)
+		}
+		rules = append(rules, fileRules...)
+	}
+
+	if *find != "" {
+		rules = append(rules, epub.RewriteRule{
+			Find:          *find,
+			Replace:       *replace,
+			Regex:         *regex,
+			CaseSensitive: *caseSensitive,
+			Selectors:     selectors,
+		})
+	}
+
+	var scope epub.RewriteScope
+	switch strings.ToLower(*scopeStr) {
+	case "body":
+		scope = epub.RewriteScopeBody
+	case "meta":
+		scope = epub.RewriteScopeMeta
+	case "all":
+		scope = epub.RewriteScopeAll
+	default:
+		return fmt.Errorf("invalid scope %q (want body, meta, all)", *scopeStr)
+	}
+
+	stats, err := epub.RewriteEPUB(ctx, input, epub.RewriteOptions{
+		OutPath: *out,
+		Scope:   scope,
+		Rules:   rules,
+		DryRun:  *dryRun,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "rewrite: %d matches across %d files\n", stats.MatchCount, stats.FilesChanged)
+	return nil
 }
 
 func runEditMeta(ctx context.Context, args []string) error {

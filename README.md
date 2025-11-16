@@ -4,6 +4,7 @@
 
 - `merge`: build an omnibus EPUB from multiple single volumes while keeping assets and reading order intact.
 - `edit-meta`: tweak the metadata or navigation of an existing EPUB without cracking open an editor.
+- `rewrite`: apply search/replace rules to the book text (and optionally metadata).
 
 ### Build
 
@@ -55,6 +56,26 @@ Useful edit flags:
 - `-no-touch-modified`: skip refreshing `dcterms:modified` (touching is the default)
 
 The command can also operate in “dump only” mode if you just want the nav or metadata JSON.
+
+## Rewrite text
+
+```sh
+novfmt rewrite \
+  -find "Rudeus" \
+  -replace "Рудеус" \
+  -scope body \
+  -selector "p.chapter-title" \
+  book.epub
+```
+
+Common rewrite flags:
+- `-find`, `-replace`: basic search/replace on text content
+- `-regex`: treat `-find` as a regular expression
+- `-scope body|meta|all`: limit rewrites to XHTML body, metadata, or both
+- `-selector`: CSS-like selector (`p`, `.class`, `p.class`) for targeting specific elements
+- `-rules rules.json`: apply multiple rules from a JSON file (array of `{ "find": "...", "replace": "...", "regex": false, "case_sensitive": false, "selectors": ["p.note"] }`)
+- `-dry-run`: show how many matches/files would change without writing anything
+- `-out`: write changes to a new EPUB instead of modifying in place
 
 ## Future work
 
