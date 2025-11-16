@@ -14,7 +14,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/kototok903/novel-formatter/internal/epub"
+	"github.com/kototok903/novfmt/internal/epub"
 )
 
 func main() {

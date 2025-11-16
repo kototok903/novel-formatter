@@ -5,7 +5,7 @@
 ### Build
 
 ```sh
-cd /Users/stas/Desktop/novel-formatter
+cd /Users/stas/Desktop/novfmt
 go build ./cmd/novfmt
 ```
 
