@@ -10,3 +10,16 @@ func hasProperty(props, target string) bool {
 	}
 	return false
 }
+
+func addProperty(props, target string) string {
+	if target == "" {
+		return props
+	}
+	if hasProperty(props, target) {
+		return props
+	}
+	if strings.TrimSpace(props) == "" {
+		return target
+	}
+	return props + " " + target
+}

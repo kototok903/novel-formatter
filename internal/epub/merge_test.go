@@ -24,7 +24,7 @@ func TestBuildPackageDefaults(t *testing.T) {
 		},
 	}
 
-	pkg := buildPackage(vols, Manifest{}, Spine{}, MergeOptions{})
+	pkg := buildPackage(vols, Manifest{}, Spine{}, MergeOptions{}, "")
 
 	if got := pkg.Metadata.Titles[0].Value; got != "Source Title" {
 		t.Fatalf("title mismatch: %q", got)

@@ -20,9 +20,11 @@ type Volume struct {
 	PackageDir  string
 	PackageDoc  *PackageDocument
 	NavHref     string
+	NavItems    []NavItem
 	DisplayName string
 	Prefix      string
 	FirstHref   string
+	CoverID     string
 }
 
 func loadVolume(ctx context.Context, idx int, source string) (*Volume, error) {
@@ -91,6 +93,32 @@ func loadVolume(ctx context.Context, idx int, source string) (*Volume, error) {
 		}
 	}
 
+	var coverID string
+	for _, meta := range pkg.Metadata.Meta {
+		if strings.EqualFold(meta.Name, "cover") && strings.TrimSpace(meta.Content) != "" {
+			coverID = strings.TrimSpace(meta.Content)
+			break
+		}
+	}
+	if coverID == "" {
+		for _, item := range pkg.Manifest.Items {
+			if hasProperty(item.Properties, "cover-image") {
+				coverID = item.ID
+				break
+			}
+		}
+	}
+
+	var navItems []NavItem
+	if navHref != "" {
+		navPath := filepath.Join(filepath.Dir(pkgPath), filepath.FromSlash(navHref))
+		items, err := parseNavFile(navPath)
+		if err != nil {
+			return cleanup(fmt.Errorf("parse nav %s: %w", navHref, err))
+		}
+		navItems = items
+	}
+
 	display := fmt.Sprintf("Volume %d", idx+1)
 	if len(pkg.Metadata.Titles) > 0 && strings.TrimSpace(pkg.Metadata.Titles[0].Value) != "" {
 		display = pkg.Metadata.Titles[0].Value
@@ -105,7 +133,9 @@ func loadVolume(ctx context.Context, idx int, source string) (*Volume, error) {
 		PackageDir:  filepath.Dir(pkgPath),
 		PackageDoc:  &pkg,
 		NavHref:     navHref,
+		NavItems:    navItems,
 		DisplayName: display,
+		CoverID:     coverID,
 	}, nil
 }
 

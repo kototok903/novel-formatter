@@ -62,6 +62,7 @@ func MergeEPUBs(ctx context.Context, sources []string, opts MergeOptions) error 
 	manifest := Manifest{}
 	spine := Spine{}
 	idHref := make(map[string]string)
+	var coverItemID string
 
 	for _, vol := range volumes {
 		select {
@@ -93,6 +94,16 @@ func MergeEPUBs(ctx context.Context, sources []string, opts MergeOptions) error 
 			}
 			if item.Fallback != "" {
 				entry.Fallback = fmt.Sprintf("v%04d_%s", vol.Index+1, item.Fallback)
+			}
+			if coverItemID == "" {
+				switch {
+				case vol.CoverID != "" && item.ID == vol.CoverID:
+					entry.Properties = addProperty(entry.Properties, "cover-image")
+					coverItemID = newID
+				case vol.CoverID == "" && hasProperty(item.Properties, "cover-image"):
+					entry.Properties = addProperty(entry.Properties, "cover-image")
+					coverItemID = newID
+				}
 			}
 			manifest.Items = append(manifest.Items, entry)
 			idHref[newID] = href
@@ -129,7 +140,7 @@ func MergeEPUBs(ctx context.Context, sources []string, opts MergeOptions) error 
 		return err
 	}
 
-	pkg := buildPackage(volumes, manifest, spine, opts)
+	pkg := buildPackage(volumes, manifest, spine, opts, coverItemID)
 	if err := writePackage(pkg, filepath.Join(oebpsDir, "content.opf")); err != nil {
 		return err
 	}
@@ -149,7 +160,7 @@ func MergeEPUBs(ctx context.Context, sources []string, opts MergeOptions) error 
 	return nil
 }
 
-func buildPackage(vols []*Volume, manifest Manifest, spine Spine, opts MergeOptions) *PackageDocument {
+func buildPackage(vols []*Volume, manifest Manifest, spine Spine, opts MergeOptions, coverID string) *PackageDocument {
 	title := opts.Title
 	if title == "" && len(vols) > 0 {
 		if len(vols[0].PackageDoc.Metadata.Titles) > 0 {
@@ -220,6 +231,12 @@ func buildPackage(vols []*Volume, manifest Manifest, spine Spine, opts MergeOpti
 		Property: "novfmt:source-count",
 		Value:    fmt.Sprintf("%d", len(vols)),
 	})
+	if coverID != "" {
+		meta.Meta = append(meta.Meta, MetaNode{
+			Name:    "cover",
+			Content: coverID,
+		})
+	}
 
 	pkg := &PackageDocument{
 		XMLNS:            nsOPF,
@@ -272,12 +289,11 @@ func writeNav(vols []*Volume, dest string) error {
 	buf.WriteString("<h1>Table of Contents</h1>\n<ol>\n")
 
 	for _, vol := range vols {
-		if vol.FirstHref == "" {
+		entry := buildVolumeNav(vol)
+		if entry == nil {
 			continue
 		}
-		title := html.EscapeString(vol.DisplayName)
-		href := html.EscapeString(vol.FirstHref)
-		buf.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a></li>`+"\n", href, title))
+		writeNavItem(&buf, *entry)
 	}
 
 	buf.WriteString("</ol>\n</nav>\n</body>\n</html>\n")
@@ -319,6 +335,69 @@ func randomURN() string {
 
 func normalizeEPUBPath(p string) string {
 	return path.Clean(strings.ReplaceAll(p, "\\", "/"))
+}
+
+func buildVolumeNav(vol *Volume) *NavItem {
+	if vol == nil {
+		return nil
+	}
+	if len(vol.NavItems) == 0 && vol.FirstHref == "" {
+		return nil
+	}
+	entry := &NavItem{
+		Title: vol.DisplayName,
+		Href:  vol.FirstHref,
+	}
+	if len(vol.NavItems) > 0 {
+		entry.Children = cloneNavItems(vol.NavItems, vol.Prefix)
+		if entry.Href == "" && len(entry.Children) > 0 {
+			entry.Href = entry.Children[0].Href
+		}
+	}
+	return entry
+}
+
+func cloneNavItems(items []NavItem, prefix string) []NavItem {
+	out := make([]NavItem, 0, len(items))
+	for _, item := range items {
+		clone := NavItem{
+			Title: item.Title,
+		}
+		if item.Href != "" {
+			clone.Href = joinHref(prefix, item.Href)
+		}
+		if len(item.Children) > 0 {
+			clone.Children = cloneNavItems(item.Children, prefix)
+		}
+		out = append(out, clone)
+	}
+	return out
+}
+
+func writeNavItem(buf *bytes.Buffer, item NavItem) {
+	buf.WriteString("<li>")
+	label := html.EscapeString(item.Title)
+	href := html.EscapeString(item.Href)
+	switch {
+	case href != "":
+		buf.WriteString(`<a href="` + href + `">`)
+		if label != "" {
+			buf.WriteString(label)
+		} else {
+			buf.WriteString(href)
+		}
+		buf.WriteString("</a>")
+	case label != "":
+		buf.WriteString(label)
+	}
+	if len(item.Children) > 0 {
+		buf.WriteString("\n<ol>\n")
+		for _, child := range item.Children {
+			writeNavItem(buf, child)
+		}
+		buf.WriteString("</ol>\n")
+	}
+	buf.WriteString("</li>\n")
 }
 
 func copyVolumePayload(vol *Volume, dst string) error {
