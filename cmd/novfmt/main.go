@@ -53,24 +53,25 @@ func main() {
 func runMerge(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("merge", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	fs.Usage = func() { fmt.Fprint(os.Stderr, usageMerge) }
 
-	out := fs.String("out", "merged.epub", "output EPUB file")
-	fs.StringVar(out, "o", "merged.epub", "alias for -out")
+	out := fs.String("out", "merged.epub", "")
+	fs.StringVar(out, "o", "merged.epub", "")
 
-	title := fs.String("title", "", "override merged title")
-	fs.StringVar(title, "t", "", "alias for -title")
+	title := fs.String("title", "", "")
+	fs.StringVar(title, "t", "", "")
 
-	lang := fs.String("lang", "", "override merged language code")
+	lang := fs.String("lang", "", "")
 
 	var creatorVals multiValue
-	fs.Var(&creatorVals, "creator", "repeatable author credit")
-	fs.Var(&creatorVals, "c", "alias for -creator")
+	fs.Var(&creatorVals, "creator", "")
+	fs.Var(&creatorVals, "c", "")
 
 	var listFiles multiValue
-	fs.Var(&listFiles, "list", "text file containing newline-separated volume paths (repeatable)")
+	fs.Var(&listFiles, "list", "")
 
 	var dirInputs multiValue
-	fs.Var(&dirInputs, "dir", "directory to scan for EPUB files (repeatable)")
+	fs.Var(&dirInputs, "dir", "")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -108,42 +109,86 @@ func runMerge(ctx context.Context, args []string) error {
 	return epub.MergeEPUBs(ctx, files, opts)
 }
 
-func printUsage() {
-	fmt.Fprintf(os.Stderr, `novfmt — EPUB utilities
+const usageHeader = `novfmt — lightweight CLI for EPUB maintenance
 
 Usage:
-  novfmt merge [options] <volume1.epub> <volume2.epub> [...]
+  novfmt <command> [options] <file(s)>
+  novfmt <command> -h        show help for a command
+
+Commands:
+  merge       combine multiple EPUB volumes into one
+  edit-meta   view or modify EPUB metadata and navigation
+  rewrite     search/replace text inside an EPUB
+`
+
+const usageMerge = `Merge:
+  novfmt merge [options] <vol1.epub> <vol2.epub> [...]
+
+  Requires at least 2 input volumes (from any combination of positional
+  args, -list, and -dir). Volumes are appended in the order given.
+
+  -o, -out <path>       output file path (default: merged.epub)
+  -t, -title <str>      title for the merged book (default: first volume's title)
+  -lang <code>          language code, e.g. "en" (default: first volume's language)
+  -c, -creator <name>   author credit; repeatable; replaces original creator lists
+  -list <file>          text file with one volume path per line; blank lines and
+                        lines starting with # are ignored; repeatable
+  -dir <path>           directory to scan for .epub files, sorted numerically
+                        when filenames contain numbers; repeatable
+`
+
+const usageEditMeta = `Edit-meta:
   novfmt edit-meta [options] <book.epub>
+
+  Without -out the input file is modified in place.
+  Can run in dump-only mode (just -dump-meta / -dump-nav, no edits).
+
+  -title <str>          set primary title
+  -lang <code>          set language code
+  -identifier <str>     set primary identifier (e.g. ISBN, UUID)
+  -description <str>    set description text
+  -creator <name>       author credit; repeatable; replaces existing creator list
+  -meta-json <file>     apply metadata patch from a JSON file
+                        (format: {"title":"...", "language":"...", "creators":["..."]})
+  -dump-meta <file>     export current metadata snapshot as JSON to <file>
+  -dump-nav <file>      export current nav document (XHTML) to <file>
+  -nav <file>           replace the entire nav document from an XHTML file
+  -out <path>           write result to a new file instead of editing in place
+  -no-touch-modified    don't update the last-modified timestamp (dcterms:modified)
+
+  CLI flags override values from -meta-json when both are given.
+`
+
+const usageRewrite = `Rewrite:
   novfmt rewrite [options] <book.epub>
 
-Merge flags:
-  -o, -out        Output EPUB path (default merged.epub)
-  -t, -title      Override merged title
-  -lang           Override merged language (default first volume)
-  -c, -creator    Repeatable author credit override
-  -list           Text file listing volumes; can repeat
-  -dir            Directory to scan for EPUB files; can repeat
+  Without -out the input file is modified in place.
+  At least one of -find or -rules is required.
 
-Edit-meta flags:
-  -title, -lang, -identifier, -description   Override core metadata fields
-  -creator                                   Repeatable creator override
-  -meta-json <file>                          Apply JSON metadata patch
-  -dump-meta <file>                          Write current metadata snapshot
-  -nav <xhtml>                               Replace nav (XHTML) document (use -dump-nav to export)
-  -out <file>                                Write edits to a new EPUB
-  -no-touch-modified                         Skip touching dcterms:modified
+  -find <str>           literal string to search for (see -regex)
+  -replace <str>        replacement text (default: empty string, i.e. delete matches)
+  -regex                treat -find as a Go regular expression
+  -case-sensitive       make matching case-sensitive (default: case-insensitive)
+  -scope <s>            body, meta, or all — limit where rewrites apply (default: body)
+  -selector <sel>       CSS-like selector to target elements (e.g. p, .note, p.chapter);
+                        repeatable; applies to the -find/-replace rule
+  -rules <file>         JSON file with an array of rule objects, each with:
+                        find, replace, regex, case_sensitive, selectors
+  -dry-run              report match counts without writing any changes
+  -out <path>           write result to a new file instead of editing in place
+`
 
-Rewrite flags:
-  -find <str>                                String or pattern to search for
-  -replace <str>                             Replacement text
-  -regex                                     Treat -find as regular expression
-  -case-sensitive                            Make matching case-sensitive (default case-insensitive)
-  -scope body|meta|all                       Rewrite only XHTML body, metadata, or both (default body)
-  -selector <sel>                            CSS-like selector (tag, .class, tag.class); repeatable
-  -rules <file>                              JSON rules file (list of {find, replace, ...})
-  -dry-run                                   Analyze and report matches without writing output
-  -out <file>                                Write rewritten book to a new EPUB
-`)
+const usageExamples = `Examples:
+  novfmt merge -o combined.epub vol1.epub vol2.epub vol3.epub
+  novfmt merge -title "Full Series" -dir ./volumes -o series.epub
+  novfmt edit-meta -title "New Title" -creator "Author" book.epub
+  novfmt edit-meta -dump-meta meta.json book.epub
+  novfmt rewrite -find "oldname" -replace "newname" book.epub
+  novfmt rewrite -rules fixes.json -dry-run book.epub
+`
+
+func printUsage() {
+	fmt.Fprint(os.Stderr, usageHeader+"\n"+usageMerge+"\n"+usageEditMeta+"\n"+usageRewrite+"\n"+usageExamples)
 }
 
 type multiValue []string
@@ -256,19 +301,20 @@ func extractVolumeNumber(name string) (int, bool) {
 func runRewrite(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("rewrite", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	fs.Usage = func() { fmt.Fprint(os.Stderr, usageRewrite) }
 
-	out := fs.String("out", "", "output EPUB path (defaults to input for in-place rewrite)")
-	find := fs.String("find", "", "string or pattern to search for")
-	replace := fs.String("replace", "", "replacement string")
-	regex := fs.Bool("regex", false, "treat find pattern as regular expression")
-	caseSensitive := fs.Bool("case-sensitive", false, "make matching case-sensitive (default false)")
-	scopeStr := fs.String("scope", "body", "rewrite scope: body, meta, all")
+	out := fs.String("out", "", "")
+	find := fs.String("find", "", "")
+	replace := fs.String("replace", "", "")
+	regex := fs.Bool("regex", false, "")
+	caseSensitive := fs.Bool("case-sensitive", false, "")
+	scopeStr := fs.String("scope", "body", "")
 
 	var selectors multiValue
-	fs.Var(&selectors, "selector", "CSS-like selector (tag, .class or tag.class); repeatable")
+	fs.Var(&selectors, "selector", "")
 
-	rulesPath := fs.String("rules", "", "JSON file with rewrite rules")
-	dryRun := fs.Bool("dry-run", false, "analyze and report matches without writing output")
+	rulesPath := fs.String("rules", "", "")
+	dryRun := fs.Bool("dry-run", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -327,21 +373,22 @@ func runRewrite(ctx context.Context, args []string) error {
 func runEditMeta(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("edit-meta", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	fs.Usage = func() { fmt.Fprint(os.Stderr, usageEditMeta) }
 
-	out := fs.String("out", "", "output EPUB path (defaults to input for in-place edits)")
-	title := fs.String("title", "", "set primary title")
-	lang := fs.String("lang", "", "set language code")
-	identifier := fs.String("identifier", "", "set primary identifier value")
-	description := fs.String("description", "", "set description text")
+	out := fs.String("out", "", "")
+	title := fs.String("title", "", "")
+	lang := fs.String("lang", "", "")
+	identifier := fs.String("identifier", "", "")
+	description := fs.String("description", "", "")
 
 	var creators multiValue
-	fs.Var(&creators, "creator", "repeatable creator credit (overrides existing list)")
+	fs.Var(&creators, "creator", "")
 
-	metaJSONPath := fs.String("meta-json", "", "apply metadata patch from JSON file")
-	dumpMeta := fs.String("dump-meta", "", "write current metadata snapshot (JSON) to file")
-	dumpNav := fs.String("dump-nav", "", "write current nav document to file")
-	navReplace := fs.String("nav", "", "replace nav document with this file")
-	noTouch := fs.Bool("no-touch-modified", false, "do not update dcterms:modified")
+	metaJSONPath := fs.String("meta-json", "", "")
+	dumpMeta := fs.String("dump-meta", "", "")
+	dumpNav := fs.String("dump-nav", "", "")
+	navReplace := fs.String("nav", "", "")
+	noTouch := fs.Bool("no-touch-modified", false, "")
 
 	if err := fs.Parse(args); err != nil {
 		return err

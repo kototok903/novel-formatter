@@ -1,84 +1,102 @@
-## novfmt
+# novfmt
 
-`novfmt` is a lightweight Go CLI for EPUB maintenance. Currently it has the following commands:
+A lightweight Go CLI for EPUB maintenance: merge volumes, edit metadata and navigation, search/replace text.
 
-- `merge`: build an omnibus EPUB from multiple single volumes while keeping assets and reading order intact.
-- `edit-meta`: tweak the metadata or navigation of an existing EPUB without cracking open an editor.
-- `rewrite`: apply search/replace rules to the book text (and optionally metadata).
-
-### Build
+## Build
 
 ```sh
-cd /path/to/novfmt
 go build ./cmd/novfmt
 ```
 
-## Merge volumes
+## Commands
+
+- **merge** — combine multiple EPUB volumes into one omnibus file
+- **edit-meta** — view or modify metadata and navigation
+- **rewrite** — search/replace text (and optionally metadata)
+
+Run `novfmt -h` or `novfmt <command> -h` for the full flag reference.
+
+> **Note:** `edit-meta` and `rewrite` modify the input file in place by default. Use `-out` to write to a new file instead.
+
+## Example workflows
+
+### Merging a multi-volume series
+
+Download all volumes into a folder, making sure filenames contain volume numbers so they sort correctly (e.g. `vol01.epub`, `vol02.epub`, …). Then:
 
 ```sh
 novfmt merge \
-  -out omnibus.epub \
+  -dir ./my-series \
   -title "My Favorite Saga" \
-  -list volumes.txt \
-  -dir /path/to/extra-volumes \
-  -creator "Primary Author" \
-  volume01.epub volume02.epub
+  -o saga.epub
 ```
 
-Key merge flags:
-- `-out` / `-o`: Output EPUB path (default `merged.epub`)
-- `-title` / `-t`: Override combined title (defaults to first volume metadata)
-- `-lang`: Force resulting language code
-- `-creator` / `-c`: Repeatable override for creator credits
-- `-list`: Append newline-separated entries from text files (ignores blank lines / `#` comments)
-- `-dir`: Scan directories for `.epub` files; entries are sorted numerically when possible
+Files in `-dir` are sorted numerically by the first number in each filename.
 
-Under the hood the command extracts each volume into a temp workspace, rewrites manifest/spine IDs (`OEBPS/Volumes/vXXXX/...`), regenerates navigation, and zips the result with a spec-compliant mimetype entry.
+### Fixing metadata and navigation after a merge
 
-## Edit metadata
+Dump the current metadata and nav to temporary files:
 
 ```sh
 novfmt edit-meta \
-  -title "New Title" \
-  -lang en \
-  -creator "Author A" -creator "Author B" \
-  -nav nav.xhtml \
-  -dump-meta current-meta.json \
-  book.epub
+  -dump-meta meta.json \
+  -dump-nav nav.xhtml \
+  saga.epub
 ```
 
-Common edit flags:
-- `-title`, `-lang`, `-identifier`, `-description`, repeatable `-creator`
-- `-meta-json`: apply a JSON patch (`{"title":"...", "creators":["..."]}`)
-- `-dump-meta`: write the current metadata snapshot to JSON
-- `-nav`: replace the navigation doc from a file; `-dump-nav` saves the existing one
-- `-out`: write edits to a new EPUB instead of modifying in place
-- `-no-touch-modified`: skip refreshing `dcterms:modified` (touching is the default)
+Open `meta.json` in a text editor — fix the language, add a description, correct the title (useful for translated books where the title may be in the wrong language):
 
-The command can also operate in “dump only” mode if you just want the nav or metadata JSON.
+```json
+{
+  "title": "Corrected Title",
+  "language": "en",
+  "description": "A short summary of the book.",
+  "creators": ["Author Name"]
+}
+```
 
-## Rewrite text
+Edit `nav.xhtml` to fix the hierarchy — nest chapters under their volumes, group subchapters (2.1, 2.2, 2.3) under their parent chapter, etc.
+
+Apply both changes and write to a new file:
+
+```sh
+novfmt edit-meta \
+  -meta-json meta.json \
+  -nav nav.xhtml \
+  -out saga-fixed.epub \
+  saga.epub
+```
+
+### Search/replace text
+
+Rename a character across the entire book:
 
 ```sh
 novfmt rewrite \
-  -find "Old name" \
-  -replace "New name" \
-  -scope body \
-  -selector "p.chapter-title" \
+  -find "Old Name" \
+  -replace "New Name" \
+  -out fixed.epub \
   book.epub
 ```
 
-Common rewrite flags:
-- `-find`, `-replace`: basic search/replace on text content
-- `-regex`: treat `-find` as a regular expression
-- `-scope body|meta|all`: limit rewrites to XHTML body, metadata, or both
-- `-selector`: CSS-like selector (`p`, `.class`, `p.class`) for targeting specific elements
-- `-rules rules.json`: apply multiple rules from a JSON file (array of `{ "find": "...", "replace": "...", "regex": false, "case_sensitive": false, "selectors": ["p.note"] }`)
-- `-dry-run`: show how many matches/files would change without writing anything
-- `-out`: write changes to a new EPUB instead of modifying in place
+Preview changes without writing anything:
+
+```sh
+novfmt rewrite \
+  -find "typo" \
+  -replace "correction" \
+  -dry-run \
+  book.epub
+```
+
+Apply multiple rules from a JSON file:
+
+```sh
+novfmt rewrite -rules fixes.json book.epub
+```
 
 ## Future work
 
-- Additional subcommands (string replacement, FB2 conversion, asset cleanup)
+- FB2 conversion, asset cleanup
 - Smarter nav merging that preserves per-chapter structure from each source
-- Optional parallel extraction and asset deduplication
+- Parallel extraction and asset deduplication
