@@ -301,6 +301,7 @@ func rewriteXHTMLFile(path string, rules []compiledRule) (int, bool, []byte, err
 					st.active++
 				}
 			}
+			t.Attr = stripXMLNSAttrs(t.Attr)
 			if err := enc.EncodeToken(t); err != nil {
 				return 0, false, nil, err
 			}
@@ -456,6 +457,20 @@ func applyRuleToText(s string, rule compiledRule) (string, int) {
 		return s, 0
 	}
 	return buf.String(), matches
+}
+
+// stripXMLNSAttrs removes xmlns attributes from the list. Go's xml.Encoder
+// re-generates namespace declarations from Name.Space, so keeping the
+// originals produces duplicates like `xmlns="..." xmlns="..."`.
+func stripXMLNSAttrs(attrs []xml.Attr) []xml.Attr {
+	out := attrs[:0]
+	for _, a := range attrs {
+		if a.Name.Local == "xmlns" || a.Name.Space == "xmlns" {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 func LoadRewriteRulesJSON(path string) ([]RewriteRule, error) {
